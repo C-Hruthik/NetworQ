@@ -1,0 +1,57 @@
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native generated
+/ios/
+/android/
+.kotlin/
+
+# EAS / Vercel
+.vercel/
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# env files — never commit secrets
+.env
+.env.*
+!.env.example
+
+# TypeScript
+*.tsbuildinfo
+
+# Native signing / certs
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+AppData/
+$RECYCLE.BIN/
+
+# Build artefacts
+*.apk
+*.aab
+*.ipa
+
+# Logs
+*.log
