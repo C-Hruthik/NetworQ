@@ -13,11 +13,29 @@ async function callClaude(messages, system, max_tokens = 1000) {
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true",
     },
-    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens, system, messages }),
+    body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens, system, messages }),
   });
   const d = await res.json();
   if (!res.ok || d.type === "error") throw new Error(d.error?.message || `API error ${res.status}`);
   return d.content?.[0]?.text || "";
+}
+
+const DAILY_AI_LIMITS = { email: 5, card_scan: 10 };
+const AI_LIMIT_MESSAGE = "You've reached your daily AI limit. Come back tomorrow or upgrade to Pro.";
+
+// Atomically checks + increments today's usage count for an action via Supabase RPC.
+// Returns true if the action is allowed, false if the daily limit has been reached.
+async function checkAiLimit(userId, actionType, limit) {
+  const { data, error } = await supabase.rpc("increment_ai_usage", {
+    p_user_id: userId,
+    p_action_type: actionType,
+    p_limit: limit,
+  });
+  if (error) {
+    console.error("AI usage check error:", error);
+    return true;
+  }
+  return data;
 }
 
 function qrUrl(data) {
@@ -289,8 +307,15 @@ export default function App() {
     if (!file?.type.startsWith("image/")) return;
     const reader = new FileReader();
     reader.onload = async (e) => {
-      setScanPreview(e.target.result); // show data URL immediately for instant preview
       setScanErr("");
+
+      const allowed = await checkAiLimit(currentUser?.id, "card_scan", DAILY_AI_LIMITS.card_scan);
+      if (!allowed) {
+        setScanErr(AI_LIMIT_MESSAGE);
+        return;
+      }
+
+      setScanPreview(e.target.result); // show data URL immediately for instant preview
       setScanning(true);
       try {
         const base64 = e.target.result.split(",")[1];
@@ -470,6 +495,11 @@ export default function App() {
   };
 
   const openEmail = async (contact) => {
+    const allowed = await checkAiLimit(currentUser.id, "email", DAILY_AI_LIMITS.email);
+    if (!allowed) {
+      showToast(AI_LIMIT_MESSAGE, "error");
+      return;
+    }
     setEmailModal(contact); setEmailSent(false); setGeneratedEmail(""); setGeneratingEmail(true);
     const text = await genIntroEmail(currentUser, contact);
     setGeneratedEmail(text); setGeneratingEmail(false);
