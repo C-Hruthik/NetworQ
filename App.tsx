@@ -2,40 +2,17 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "./supabase";
 import emailjs from "@emailjs/browser";
 
-const API = "https://api.anthropic.com/v1/messages";
+const CLAUDE_PROXY = "/api/claude";
 
 async function callClaude(messages, system, max_tokens = 1000) {
-  const res = await fetch(API, {
+  const res = await fetch(CLAUDE_PROXY, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.EXPO_PUBLIC_ANTHROPIC_KEY,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens, system, messages }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ max_tokens, system, messages }),
   });
   const d = await res.json();
   if (!res.ok || d.type === "error") throw new Error(d.error?.message || `API error ${res.status}`);
   return d.content?.[0]?.text || "";
-}
-
-const DAILY_AI_LIMITS = { email: 5, card_scan: 10 };
-const AI_LIMIT_MESSAGE = "You've reached your daily AI limit. Come back tomorrow or upgrade to Pro.";
-
-// Atomically checks + increments today's usage count for an action via Supabase RPC.
-// Returns true if the action is allowed, false if the daily limit has been reached.
-async function checkAiLimit(userId, actionType, limit) {
-  const { data, error } = await supabase.rpc("increment_ai_usage", {
-    p_user_id: userId,
-    p_action_type: actionType,
-    p_limit: limit,
-  });
-  if (error) {
-    console.error("AI usage check error:", error);
-    return true;
-  }
-  return data;
 }
 
 function qrUrl(data) {
@@ -64,6 +41,15 @@ Use null for missing fields.`;
     ]
   }], sys);
   try { return JSON.parse(text.replace(/```json|```/g, "").trim()); } catch { return null; }
+}
+
+async function checkAndIncrementUsage(supabaseClient, userId, action: "email_generation" | "card_scan") {
+  const { data, error } = await supabaseClient.rpc("increment_ai_usage", { p_user_id: userId, p_action: action });
+  if (error) throw new Error(error.message);
+  if (!data.allowed) {
+    const limit = action === "email_generation" ? 5 : 10;
+    throw new Error(`Daily limit reached: ${limit} ${action === "email_generation" ? "email generations" : "card scans"} per day. Try again tomorrow.`);
+  }
 }
 
 async function genIntroEmail(fromUser, toContact) {
@@ -307,18 +293,16 @@ export default function App() {
     if (!file?.type.startsWith("image/")) return;
     const reader = new FileReader();
     reader.onload = async (e) => {
-      setScanErr("");
-
-      const allowed = await checkAiLimit(currentUser?.id, "card_scan", DAILY_AI_LIMITS.card_scan);
-      if (!allowed) {
-        setScanErr(AI_LIMIT_MESSAGE);
-        return;
-      }
-
       setScanPreview(e.target.result); // show data URL immediately for instant preview
+      setScanErr("");
       setScanning(true);
       try {
         const base64 = e.target.result.split(",")[1];
+
+        // Check daily card scan limit before calling Claude
+        if (currentUser?.id) {
+          await checkAndIncrementUsage(supabase, currentUser.id, "card_scan");
+        }
 
         // Upload to Supabase Storage and extract card data in parallel
         const [imageUrl, cardData] = await Promise.all([
@@ -495,14 +479,19 @@ export default function App() {
   };
 
   const openEmail = async (contact) => {
-    const allowed = await checkAiLimit(currentUser.id, "email", DAILY_AI_LIMITS.email);
-    if (!allowed) {
-      showToast(AI_LIMIT_MESSAGE, "error");
-      return;
-    }
     setEmailModal(contact); setEmailSent(false); setGeneratedEmail(""); setGeneratingEmail(true);
-    const text = await genIntroEmail(currentUser, contact);
-    setGeneratedEmail(text); setGeneratingEmail(false);
+    try {
+      if (currentUser?.id) {
+        await checkAndIncrementUsage(supabase, currentUser.id, "email_generation");
+      }
+      const text = await genIntroEmail(currentUser, contact);
+      setGeneratedEmail(text);
+    } catch (err) {
+      setGeneratedEmail("");
+      showToast(err.message || "Failed to generate email.", "error");
+    } finally {
+      setGeneratingEmail(false);
+    }
   };
 
   const sendEmail = async () => {

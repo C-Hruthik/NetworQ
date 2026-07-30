@@ -119,49 +119,166 @@ create policy "Users can read own meetings"
 create policy "Users can insert own meetings"
   on meetings for insert with check (auth.uid() = user_id);
 
--- ── AI USAGE (daily limits for email generation / card scans) ────────────────
+-- ── AI USAGE ──────────────────────────────────────────────────────────────────
+-- Tracks per-user daily usage for email_generation and card_scan actions.
+-- Limits: 5 email generations / day, 10 card scans / day.
 create table if not exists ai_usage (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid references auth.users(id) on delete cascade not null,
-  action_type text not null,
-  date        date not null default current_date,
+  action      text not null check (action in ('email_generation', 'card_scan')),
+  used_date   date not null default current_date,
   count       integer not null default 0,
-  unique (user_id, action_type, date)
+  unique (user_id, action, used_date)
 );
 
 alter table ai_usage enable row level security;
 
-create policy "Users can read own ai usage"
+create policy "Users can read own ai_usage"
   on ai_usage for select using (auth.uid() = user_id);
 
--- Atomically checks the daily limit and increments the counter if under it.
--- Returns true if the action is allowed, false if the daily limit is reached.
-create or replace function increment_ai_usage(p_user_id uuid, p_action_type text, p_limit integer)
-returns boolean
+create policy "Users can insert own ai_usage"
+  on ai_usage for insert with check (auth.uid() = user_id);
+
+create policy "Users can update own ai_usage"
+  on ai_usage for update using (auth.uid() = user_id);
+
+-- ── WAITLIST ──────────────────────────────────────────────────────────────────
+create sequence if not exists waitlist_position_seq;
+
+create table if not exists waitlist (
+  id         uuid        primary key default gen_random_uuid(),
+  email      text        not null unique,
+  created_at timestamptz default now(),
+  notified   boolean     default false,
+  position   int         not null          -- set explicitly by join_waitlist, never via column default
+);
+
+-- Public insert only — no auth required for sign-ups
+alter table waitlist enable row level security;
+
+create policy "Anyone can join waitlist"
+  on waitlist for insert with check (true);
+
+-- Returns {already_exists: boolean, position: int, show_position: boolean}
+-- show_position is false until the waitlist has at least 20 signups.
+--
+-- Sequence safety: nextval() is only called when we are certain the email is
+-- new, so duplicate submissions never advance the sequence or burn a number.
+-- Race condition (two concurrent new signups for the same email): the inner
+-- BEGIN/EXCEPTION block catches the unique_violation that would otherwise
+-- surface as an error, re-fetches the winner's row, and returns already_exists:
+-- true. One sequence number is burned in that rare case — accepted tradeoff.
+create or replace function join_waitlist(p_email text)
+returns jsonb
 language plpgsql
 security definer
-set search_path = public
 as $$
 declare
-  current_count integer;
+  v_email    text := lower(trim(p_email));
+  v_position int;
+  v_count    int;
 begin
-  insert into ai_usage (user_id, action_type, date, count)
-  values (p_user_id, p_action_type, current_date, 0)
-  on conflict (user_id, action_type, date) do nothing;
-
-  select count into current_count from ai_usage
-  where user_id = p_user_id and action_type = p_action_type and date = current_date
-  for update;
-
-  if current_count >= p_limit then
-    return false;
+  -- Server-side email format guard (can't be bypassed via direct RPC)
+  if v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
+    raise exception 'invalid_email' using hint = 'Please enter a valid email address.';
   end if;
 
-  update ai_usage set count = count + 1
-  where user_id = p_user_id and action_type = p_action_type and date = current_date;
+  -- Check existence first — never touch the sequence for a duplicate
+  select position into v_position
+    from waitlist
+   where email = v_email;
 
-  return true;
+  if found then
+    select count(*) into v_count from waitlist;
+    return jsonb_build_object(
+      'already_exists', true,
+      'position',       v_position,
+      'show_position',  v_count >= 20
+    );
+  end if;
+
+  -- New email: claim the next position then insert
+  begin
+    v_position := nextval('waitlist_position_seq');
+    insert into waitlist (email, position)
+      values (v_email, v_position);
+  exception when unique_violation then
+    -- Another session won the race and inserted this email between our
+    -- SELECT and INSERT. Fetch their row and return as an existing signup.
+    select position into v_position
+      from waitlist
+     where email = v_email;
+
+    select count(*) into v_count from waitlist;
+    return jsonb_build_object(
+      'already_exists', true,
+      'position',       v_position,
+      'show_position',  v_count >= 20
+    );
+  end;
+
+  select count(*) into v_count from waitlist;
+  return jsonb_build_object(
+    'already_exists', false,
+    'position',       v_position,
+    'show_position',  v_count >= 20
+  );
 end;
 $$;
 
-grant execute on function increment_ai_usage(uuid, text, integer) to authenticated;
+revoke execute on function join_waitlist(text) from public;
+grant  execute on function join_waitlist(text) to   anon;
+
+-- Returns {allowed: boolean, remaining: integer}
+-- Increments the counter atomically; returns false if the daily limit is exceeded.
+create or replace function increment_ai_usage(p_user_id uuid, p_action text)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_limit    integer;
+  v_count    integer;
+  v_allowed  boolean;
+begin
+  -- Determine per-action daily limit
+  if p_action = 'email_generation' then
+    v_limit := 5;
+  elsif p_action = 'card_scan' then
+    v_limit := 10;
+  else
+    raise exception 'Unknown action: %', p_action;
+  end if;
+
+  -- Upsert today's row and increment atomically
+  insert into ai_usage (user_id, action, used_date, count)
+    values (p_user_id, p_action, current_date, 1)
+  on conflict (user_id, action, used_date)
+    do update set count = ai_usage.count + 1;
+
+  -- Read back the count just written
+  select count into v_count
+    from ai_usage
+   where user_id = p_user_id
+     and action  = p_action
+     and used_date = current_date;
+
+  v_allowed := v_count <= v_limit;
+
+  -- If over the limit, roll back the increment so the count stays at the cap
+  if not v_allowed then
+    update ai_usage
+       set count = v_limit
+     where user_id   = p_user_id
+       and action     = p_action
+       and used_date  = current_date;
+  end if;
+
+  return jsonb_build_object(
+    'allowed',    v_allowed,
+    'used',       least(v_count, v_limit),
+    'limit',      v_limit,
+    'remaining',  greatest(v_limit - least(v_count, v_limit), 0)
+  );
+end;
+$$;

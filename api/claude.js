@@ -9,10 +9,10 @@ export default async function handler(req, res) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2025-01-21",
       },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify({ ...req.body, model: "claude-haiku-4-5-20251001" }),
     });
     const data = await response.json();
     res.json(data);

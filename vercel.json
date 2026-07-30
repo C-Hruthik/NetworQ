@@ -1,5 +1,11 @@
 {
   "outputDirectory": "dist",
   "buildCommand": "npx expo export --platform web",
-  "framework": null
+  "framework": null,
+  "routes": [
+    { "src": "/waitlist",    "dest": "/api/waitlist" },
+    { "src": "/api/(.*)",   "dest": "/api/$1" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)",       "dest": "/index.html" }
+  ]
 }
