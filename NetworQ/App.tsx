@@ -2,18 +2,13 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "./supabase";
 import emailjs from "@emailjs/browser";
 
-const API = "https://api.anthropic.com/v1/messages";
+const CLAUDE_PROXY = "/api/claude";
 
 async function callClaude(messages, system, max_tokens = 1000) {
-  const res = await fetch(API, {
+  const res = await fetch(CLAUDE_PROXY, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.EXPO_PUBLIC_ANTHROPIC_KEY,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens, system, messages }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ max_tokens, system, messages }),
   });
   const d = await res.json();
   if (!res.ok || d.type === "error") throw new Error(d.error?.message || `API error ${res.status}`);
@@ -46,6 +41,15 @@ Use null for missing fields.`;
     ]
   }], sys);
   try { return JSON.parse(text.replace(/```json|```/g, "").trim()); } catch { return null; }
+}
+
+async function checkAndIncrementUsage(supabaseClient, userId, action: "email_generation" | "card_scan") {
+  const { data, error } = await supabaseClient.rpc("increment_ai_usage", { p_user_id: userId, p_action: action });
+  if (error) throw new Error(error.message);
+  if (!data.allowed) {
+    const limit = action === "email_generation" ? 5 : 10;
+    throw new Error(`Daily limit reached: ${limit} ${action === "email_generation" ? "email generations" : "card scans"} per day. Try again tomorrow.`);
+  }
 }
 
 async function genIntroEmail(fromUser, toContact) {
@@ -295,6 +299,11 @@ export default function App() {
       try {
         const base64 = e.target.result.split(",")[1];
 
+        // Check daily card scan limit before calling Claude
+        if (currentUser?.id) {
+          await checkAndIncrementUsage(supabase, currentUser.id, "card_scan");
+        }
+
         // Upload to Supabase Storage and extract card data in parallel
         const [imageUrl, cardData] = await Promise.all([
           (async () => {
@@ -471,8 +480,18 @@ export default function App() {
 
   const openEmail = async (contact) => {
     setEmailModal(contact); setEmailSent(false); setGeneratedEmail(""); setGeneratingEmail(true);
-    const text = await genIntroEmail(currentUser, contact);
-    setGeneratedEmail(text); setGeneratingEmail(false);
+    try {
+      if (currentUser?.id) {
+        await checkAndIncrementUsage(supabase, currentUser.id, "email_generation");
+      }
+      const text = await genIntroEmail(currentUser, contact);
+      setGeneratedEmail(text);
+    } catch (err) {
+      setGeneratedEmail("");
+      showToast(err.message || "Failed to generate email.", "error");
+    } finally {
+      setGeneratingEmail(false);
+    }
   };
 
   const sendEmail = async () => {
