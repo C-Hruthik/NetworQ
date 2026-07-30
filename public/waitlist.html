@@ -320,12 +320,30 @@
       opacity: 0.6;
     }
 
-    /* ── Mobile adjustments ─────────────────────────── */
+    /* ── Mobile adjustments (375px–480px) ──────────── */
     @media (max-width: 480px) {
-      .input-row { flex-direction: column; }
-      .submit-btn { width: 100%; justify-content: center; }
-      .email-input { height: 48px; }
-      .submit-btn { height: 48px; }
+      /* Tighter page breathing room — centered content shouldn't start far down */
+      .page         { padding: 24px 20px; }
+
+      /* Wordmark gap cut roughly in half */
+      .wordmark     { margin-bottom: 20px; }
+
+      /* Eyebrow sits closer to headline */
+      .eyebrow      { margin-bottom: 10px; }
+
+      /* Headline: drop to 1.5rem so it wraps to 3 lines max, not 4 */
+      h1            { font-size: 1.5rem; margin-bottom: 14px; }
+
+      /* Subhead: smaller text, tighter gap to the form */
+      .subhead      { font-size: 14px; margin-bottom: 20px; }
+
+      /* Form: stacked inputs */
+      .input-row    { flex-direction: column; }
+      .email-input  { height: 48px; }
+      .submit-btn   { width: 100%; height: 48px; justify-content: center; }
+
+      /* Footer pulled up significantly */
+      .footer       { margin-top: 28px; }
     }
 
     /* ── Reduced motion ─────────────────────────────── */
@@ -394,7 +412,7 @@
       <div class="success-note" id="success-note">We'll email you at launch. First 100 get a full year free.</div>
     </div>
 
-    <p class="footer">© 2025 NetworQ</p>
+    <p class="footer">© 2026 NetworQ</p>
   </div>
 </main>
 
