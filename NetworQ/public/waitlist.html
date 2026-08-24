@@ -7,31 +7,44 @@
   <meta name="description" content="NetworQ scans business cards, drafts follow-ups, and reminds you to reconnect before people forget you." />
 
   <style>
-    /* ── Tokens ─────────────────────────────────────── */
+    /* ── Tokens (light by default) ─────────────────── */
     :root {
-      --bg:          #0C0E14;
-      --surface:     #161B26;
-      --border:      #252D42;
-      --text:        #F1F3FA;
-      --muted:       #6B7A9B;
-      --accent:      #3BFFA1;
-      --accent-glow: rgba(59, 255, 161, 0.18);
-      --accent-dim:  rgba(59, 255, 161, 0.09);
-      --danger:      #FF6B6B;
+      --bg:          #F4F6FC;
+      --surface:     #FFFFFF;
+      --border:      #DDE3F0;
+      --text:        #0C0E14;
+      --muted:       #5A6B8A;
+      --accent:      #008F52;
+      --accent-glow: rgba(0, 143, 82, 0.14);
+      --accent-dim:  rgba(0, 143, 82, 0.08);
+      --danger:      #DC2626;
       --radius:      10px;
     }
 
-    @media (prefers-color-scheme: light) {
+    @media (prefers-color-scheme: dark) {
       :root {
-        --bg:          #F4F6FC;
-        --surface:     #FFFFFF;
-        --border:      #DDE3F0;
-        --text:        #0C0E14;
-        --muted:       #5A6B8A;
-        --accent:      #008F52;
-        --accent-glow: rgba(0, 143, 82, 0.12);
-        --accent-dim:  rgba(0, 143, 82, 0.07);
+        --bg:          #0C0E14;
+        --surface:     #161B26;
+        --border:      #252D42;
+        --text:        #F1F3FA;
+        --muted:       #6B7A9B;
+        --accent:      #3BFFA1;
+        --accent-glow: rgba(59, 255, 161, 0.18);
+        --accent-dim:  rgba(59, 255, 161, 0.09);
+        --danger:      #FF6B6B;
       }
+    }
+
+    :root[data-theme="light"] {
+      --bg:          #F4F6FC;
+      --surface:     #FFFFFF;
+      --border:      #DDE3F0;
+      --text:        #0C0E14;
+      --muted:       #5A6B8A;
+      --accent:      #008F52;
+      --accent-glow: rgba(0, 143, 82, 0.14);
+      --accent-dim:  rgba(0, 143, 82, 0.08);
+      --danger:      #DC2626;
     }
 
     :root[data-theme="dark"] {
@@ -44,17 +57,6 @@
       --accent-glow: rgba(59, 255, 161, 0.18);
       --accent-dim:  rgba(59, 255, 161, 0.09);
       --danger:      #FF6B6B;
-    }
-
-    :root[data-theme="light"] {
-      --bg:          #F4F6FC;
-      --surface:     #FFFFFF;
-      --border:      #DDE3F0;
-      --text:        #0C0E14;
-      --muted:       #5A6B8A;
-      --accent:      #008F52;
-      --accent-glow: rgba(0, 143, 82, 0.12);
-      --accent-dim:  rgba(0, 143, 82, 0.07);
     }
 
     /* ── Reset ──────────────────────────────────────── */
@@ -179,9 +181,9 @@
     .email-input {
       flex: 1;
       min-width: 0;
-      height: 52px;
-      padding: 0 16px;
-      font-size: 15px;
+      height: 60px;
+      padding: 0 20px;
+      font-size: 16px;
       font-family: inherit;
       color: var(--text);
       background: var(--surface);
@@ -201,7 +203,7 @@
     .email-input:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .submit-btn {
-      height: 52px;
+      height: 60px;
       padding: 0 22px;
       font-size: 14px;
       font-weight: 600;
@@ -320,12 +322,30 @@
       opacity: 0.6;
     }
 
-    /* ── Mobile adjustments ─────────────────────────── */
+    /* ── Mobile adjustments (375px–480px) ──────────── */
     @media (max-width: 480px) {
-      .input-row { flex-direction: column; }
-      .submit-btn { width: 100%; justify-content: center; }
-      .email-input { height: 48px; }
-      .submit-btn { height: 48px; }
+      /* Tighter page breathing room — centered content shouldn't start far down */
+      .page         { padding: 24px 20px; }
+
+      /* Wordmark gap cut roughly in half */
+      .wordmark     { margin-bottom: 20px; }
+
+      /* Eyebrow sits closer to headline */
+      .eyebrow      { margin-bottom: 10px; }
+
+      /* Headline: drop to 1.5rem so it wraps to 3 lines max, not 4 */
+      h1            { font-size: 1.5rem; margin-bottom: 14px; }
+
+      /* Subhead: smaller text, tighter gap to the form */
+      .subhead      { font-size: 14px; margin-bottom: 20px; }
+
+      /* Form: stacked inputs */
+      .input-row    { flex-direction: column; }
+      .email-input  { height: 54px; }
+      .submit-btn   { width: 100%; height: 54px; justify-content: center; }
+
+      /* Footer pulled up significantly */
+      .footer       { margin-top: 28px; }
     }
 
     /* ── Reduced motion ─────────────────────────────── */
@@ -394,7 +414,7 @@
       <div class="success-note" id="success-note">We'll email you at launch. First 100 get a full year free.</div>
     </div>
 
-    <p class="footer">© 2025 NetworQ</p>
+    <p class="footer">© 2026 NetworQ</p>
   </div>
 </main>
 

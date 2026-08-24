@@ -1,10 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+const fs   = require('fs');
+const path = require('path');
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-export default function handler(req, res) {
+module.exports = function handler(req, res) {
   const html = fs.readFileSync(
     path.join(__dirname, '..', 'public', 'waitlist.html'),
     'utf8'
@@ -16,4 +13,4 @@ export default function handler(req, res) {
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.status(200).send(injected);
-}
+};
